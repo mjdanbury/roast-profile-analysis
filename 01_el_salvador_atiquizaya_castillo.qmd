@@ -69,6 +69,7 @@ D_el_salvador |>
   geom_line(aes(x=Time, y = `IBTS Temp`), color = "skyblue") +
   geom_line(aes(x=Time, y = `Bean Probe ROR`*10), color = "tan") +
   scale_y_continuous(limits = c(0,300)) +
+  labs(title = 'Roasts of El Salvador Atiquizaya Castillo')+
   theme_minimal() +
   facet_wrap(~roast)
 ```
