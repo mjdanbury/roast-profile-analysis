@@ -1,0 +1,118 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+```
+
+## n = 1
+
+```{r}
+roast_1 <- read_csv('data/el_salvador_atiquizaya_castillo/2025-03-11_El Salvador Atiquizaya Castillo #1.csv',
+                    skip = 19)
+```
+
+```{r}
+roast_1 |>
+  ggplot() +
+  geom_line(aes(x=Time, y = `Bean Probe Temp`)) +
+  geom_line(aes(x=Time, y = `Bean Probe ROR`*10), color = "tan") +
+  scale_y_continuous(limits = c(0,300)) +
+  theme_minimal()
+```
+
+## El Salvador
+
+```{r}
+paths <- list.files("data/el_salvador_atiquizaya_castillo/")
+D_el_salvador <- paths |>
+  set_names(basename) |> 
+  map(\(path) read_csv(str_c("data/el_salvador_atiquizaya_castillo/",path), skip = 19)) |>
+  list_rbind(names_to = "roast") |>
+  mutate(
+    roast = str_extract(roast,"(\\d).csv$", group = 1),
+    roast = as.character(roast)
+    )
+```
+
+```{r}
+D_el_salvador |> 
+  ggplot(aes(x=Time, y = `Bean Probe Temp`, color = roast)) +
+  geom_line() +
+  scale_y_continuous(breaks = seq(0,220, by=10)) +
+  theme_minimal()+
+  labs(title = "El Salvador Atiquizaya Castillo")
+```
+
+```{r}
+D_el_salvador |> 
+  ggplot(aes(x=Time, y = `IBTS Temp`, color = roast)) +
+  geom_line() +
+  labs(title = "El Salvador Atiquizaya Castillo")
+```
+
+```{r}
+D_el_salvador |> 
+  ggplot(aes(x=Time, y = `Bean Probe ROR`, color = roast)) +
+  geom_line() +
+  labs(title = "El Salvador Atiquizaya Castillo") +
+  scale_y_continuous(limits = c(0,30))
+```
+
+```{r}
+D_el_salvador |> 
+  ggplot() +
+  geom_line(aes(x=Time, y = `Bean Probe Temp`)) +
+  geom_line(aes(x=Time, y = `IBTS Temp`), color = "skyblue") +
+  geom_line(aes(x=Time, y = `Bean Probe ROR`*10), color = "tan") +
+  scale_y_continuous(limits = c(0,300)) +
+  theme_minimal() +
+  facet_wrap(~roast)
+```
+
+## Ethiopia Shakiso Wesi
+
+```{r}
+paths <- list.files("data/ethiopia_shakiso_wesi/")
+D_shakiso_wesi <- paths |>
+  set_names(basename) |> 
+  map(\(path) read_csv(str_c("data/ethiopia_shakiso_wesi/",path), skip = 19)) |> 
+  list_rbind(names_to = "roast") |>
+  mutate(
+    roast = str_extract(roast,"(\\d).csv$", group = 1),
+    roast = as.character(roast)
+    )
+```
+
+```{r}
+D_shakiso_wesi |> 
+  ggplot(aes(x=Time, y = `Bean Probe Temp`, color = roast)) +
+  geom_line() +
+  labs(title = "Ethiopia Shakiso Wesi")
+```
+
+## Ethiopia Dry Process Korate
+
+```{r}
+paths <- list.files("data/ethiopia_dry_process_korate/")
+D_korate <- paths |>
+  set_names(basename) |> 
+  map(\(path) read_csv(str_c("data/ethiopia_dry_process_korate/",path), skip = 19)) |> 
+  list_rbind(names_to = "roast") |>
+  mutate(
+    roast = str_extract(roast,"(\\d).csv$", group = 1),
+    roast = as.character(roast)
+    )
+```
+
+```{r}
+D_korate |> 
+  ggplot(aes(x=Time, y = `Bean Probe Temp`, color = roast)) +
+  geom_line() +
+  labs(title = "Ethiopia Dry Process Korate")
+```
+
+TODO - It would be nice to create a `bean` column and see how events change for different roasts
