@@ -4,6 +4,24 @@ editor_options:
   chunk_output_type: console
 ---
 
+# Coffee Roasting Data Analysis
+
+Roasts - One run
+
+Timesteps - One step in time during a run
+
+Events - Special steps in time during a run
+
+Idea will be to have the following tables
+
+-   `curves` (each row is a time step, each column is a input setting or output measurement, each value is the setting/measurement value at that step in time)
+
+-   `events` (`event_type`, `roast_id`,
+
+-   `parameters` (`roast_id`, `bean_name`, `batch_size`, `batch_yield`, `preheat_temp`
+
+-   `metrics`
+
 ```{r}
 library(tidyverse)
 ```
@@ -13,6 +31,11 @@ library(tidyverse)
 ```{r}
 roast_1 <- read_csv('data/el_salvador_atiquizaya_castillo/2025-03-11_El Salvador Atiquizaya Castillo #1.csv',
                     skip = 19)
+```
+
+```{r}
+metadata_1 <- read_csv('data/el_salvador_atiquizaya_castillo/2025-03-11_El Salvador Atiquizaya Castillo #1.csv',
+                       n_max = 19)
 ```
 
 ```{r}
@@ -30,7 +53,8 @@ roast_1 |>
 paths <- list.files("data/el_salvador_atiquizaya_castillo/")
 D_el_salvador <- paths |>
   set_names(basename) |> 
-  map(\(path) read_csv(str_c("data/el_salvador_atiquizaya_castillo/",path), skip = 19)) |>
+  map(\(path) read_csv(str_c("data/el_salvador_atiquizaya_castillo/",path),
+                       skip = 19)) |>
   list_rbind(names_to = "roast") |>
   mutate(
     roast = str_extract(roast,"(\\d).csv$", group = 1),
@@ -48,10 +72,20 @@ D_el_salvador |>
 ```
 
 ```{r}
-D_el_salvador |> 
-  ggplot(aes(x=Time, y = `IBTS Temp`, color = roast)) +
-  geom_line() +
-  labs(title = "El Salvador Atiquizaya Castillo")
+#El Salvador Atiquizaya Castillo
+ggplot() +
+  geom_rect(aes(xmin=hm("8:30"),xmax=hm("10:30"),ymin=205,ymax=209),
+            fill="tan") +
+  geom_hline(yintercept = 205, linetype="dotted", color="tan") +
+  geom_rect(aes(xmin=hm("10:30"),xmax=hm("11:30"),ymin=209,ymax=212),
+            fill="peru") +
+  geom_hline(yintercept = 209, linetype="dotted", color="peru") +
+  geom_rect(aes(xmin=hm("11:30"),xmax=hm("12:30"),ymin=212,ymax=218),
+            fill="saddlebrown") +
+  geom_hline(yintercept = 212, linetype="dotted", color="saddlebrown") +
+  geom_line(aes(x=Time, y = `IBTS Temp`, color = roast), data=D_el_salvador) +
+  theme_minimal() +
+  labs(title = "El Salvador Atiquizaya Castillo - Infrared Temperature Sensor Curves")
 ```
 
 ```{r}
@@ -95,6 +129,22 @@ D_shakiso_wesi |>
   labs(title = "Ethiopia Shakiso Wesi")
 ```
 
+```{r}
+ggplot() +
+  geom_rect(aes(xmin=hm("8:30"),xmax=hm("10:30"),ymin=205,ymax=209),
+            fill="tan") +
+  geom_hline(yintercept = 205, linetype="dotted", color="tan") +
+  geom_rect(aes(xmin=hm("10:30"),xmax=hm("11:30"),ymin=209,ymax=212),
+            fill="peru") +
+  geom_hline(yintercept = 209, linetype="dotted", color="peru") +
+  geom_rect(aes(xmin=hm("11:30"),xmax=hm("12:30"),ymin=212,ymax=218),
+            fill="saddlebrown") +
+  geom_hline(yintercept = 212, linetype="dotted", color="saddlebrown") +
+  geom_line(aes(x=Time, y = `IBTS Temp`, color = roast), data=D_shakiso_wesi) +
+  theme_minimal() +
+  labs(title = "Ethiopia Shakiso Wesi - IBTS Curves")
+```
+
 ## Ethiopia Dry Process Korate
 
 ```{r}
@@ -114,6 +164,22 @@ D_korate |>
   ggplot(aes(x=Time, y = `Bean Probe Temp`, color = roast)) +
   geom_line() +
   labs(title = "Ethiopia Dry Process Korate")
+```
+
+```{r}
+ggplot() +
+  geom_rect(aes(xmin=hm("8:30"),xmax=hm("10:30"),ymin=205,ymax=209),
+            fill="tan") +
+  geom_hline(yintercept = 205, linetype="dotted", color="tan") +
+  geom_rect(aes(xmin=hm("10:30"),xmax=hm("11:30"),ymin=209,ymax=212),
+            fill="peru") +
+  geom_hline(yintercept = 209, linetype="dotted", color="peru") +
+  geom_rect(aes(xmin=hm("11:30"),xmax=hm("12:30"),ymin=212,ymax=218),
+            fill="saddlebrown") +
+  geom_hline(yintercept = 212, linetype="dotted", color="saddlebrown") +
+  geom_line(aes(x=Time, y = `IBTS Temp`, color = roast), data=D_korate) +
+  theme_minimal() +
+  labs(title = "Ethiopia Dry Process Korate - IBTS Curves")
 ```
 
 TODO - It would be nice to create a `bean` column and see how events change for different roasts
