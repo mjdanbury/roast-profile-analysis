@@ -1,18 +1,26 @@
 # Royal Crown Jewels
 
+Aillio touts Roast World as a place to share your roasts. But in practice, this is pretty useless. Even if the person entered in all the relevant data for their roast (rare), how do I know their roast went well? How do I know that they're even a competent enough to judge "went well"? If it did go well, is that because
+
+For a while I found it to be less of a gold mine than a junk heap. That is, until I stumbled upon Royal Coffee's Crown Jewels, roasting guides for the bullet for their top of the line coffees, by Evan Gilman.
+
 ```{r}
 library(tidyverse)
 ```
 
 ```{r}
-paths <- list.files("data/crown-jewels/")
+paths <- list.files("data/royal-crown-jewels/")
+
+countries <- c("Kenya","Ethiopia","Uganda","Honduras","Panama","Sumatra","Colombia","Ecuador","Peru","Sulawesi","Rwanda","Brazil","Papua New Guinea","Burundi","Guatemala","Costa Rica","Bolivia","Mexico","Timor Leste","Tanzania","Bali")
+
 D_jewels <- paths |>
   set_names(basename) |> 
-  map(\(path) read_csv(str_c("data/crown-jewels/",path),skip = 19)) |>
+  map(\(path) read_csv(str_c("data/royal-crown-jewels/",path),skip = 19)) |>
   list_rbind(names_to = "file") |> 
   mutate(
     date = str_extract(file,"^\\d{4}-\\d{2}-\\d{2}") |> ymd(),
-    id = str_extract(file,"CJO?\\d{4}")
+    id = str_extract(file,"CJO?\\d{4}"),
+    country = str_extract(file, paste(countries, collapse = "|"))
   ) |> 
   group_by(file) |> 
   mutate(
@@ -24,7 +32,15 @@ D_jewels <- paths |>
 ```
 
 ```{r}
-D_jewels |> distinct(id)
+D_jewels |> filter(
+  is.na(country)
+)
+```
+
+```{r}
+D_jewels |> filter(
+  is.na(id)
+)
 ```
 
 ```{r}
@@ -54,8 +70,8 @@ D_jewels |>
 
 ```{r}
 D_jewels |> 
-  ggplot(aes(x=Time, y = `Power Setting`)) +
-  geom_area(alpha=0.5)+
+  ggplot(aes(x=Time, y = `Power Setting`, group=file)) +
+  geom_area(alpha=0.1, position = "identity")+
   #scale_y_continuous(limits = c(0,30)) +
   theme_minimal() +
   scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
@@ -64,8 +80,8 @@ D_jewels |>
 
 ```{r}
 D_jewels |> 
-  ggplot(aes(x=Time, y = `Fan Setting`)) +
-  geom_area(alpha=0.5) +
+  ggplot(aes(x=Time, y = `Fan Setting`, group=file)) +
+  geom_area(alpha=0.1, position = "identity") +
   theme_minimal() +
   scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
   facet_wrap(~factor(year(date)))
@@ -73,8 +89,8 @@ D_jewels |>
 
 ```{r}
 D_jewels |> 
-  ggplot(aes(x=Time, y = `Drum Setting`)) +
-  geom_area(alpha=0.5)+
+  ggplot(aes(x=Time, y = `Drum Setting`, group=file)) +
+  geom_area(alpha=0.1, position="identity")+
   theme_minimal() +
   scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
   facet_wrap(~factor(year(date)))
@@ -86,25 +102,22 @@ TODO - End Temperature (y) vs End Time (x) faceted by year AND/OR colored by pro
 D_jewels |> 
   ggplot(aes(x=date,y=preheat_temp)) +
   geom_point(size=0.7) +
-  scale_y_continuous(breaks=c(200,210,220,230,240,250,260))
+  scale_y_continuous(breaks=c(200,210,220,230,240,250,260))+
   labs(title="Preheat temps over time")
-```
-
-```{r}
-D_jewels |> 
-  ggplot(aes(x=date,y=finish_temp)) +
-  geom_point(size=0.7) +
-  geom_smooth() +
-  labs(title="Finish temperatures",
-       subtitle = "Is there a seasonal compenent or is that just chance?")
 ```
 
 ```{r}
 D_jewels |> 
   ggplot(aes(x=date,y=finish_time)) +
   geom_point(size=0.7) +
-  geom_smooth() +
   labs(title="Finish times")
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=date,y=finish_temp)) +
+  geom_point(size=0.7) +
+  labs(title="Finish temperatures")
 ```
 
 ```{r}
@@ -114,4 +127,13 @@ D_jewels |>
   geom_rug() +
   scale_y_continuous(limits = c(195,210)) +
   facet_wrap(~factor(year(date)))
+```
+
+TODO - Process Yellowing + First Crack Info from files. Show plots of times, temperatures of yellowing and first crack, as well as plots of times of percentages spent in each roast phase. (High value, can inform my roasting)
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=finish_time, y=preheat_temp))+
+  geom_point(size=0.7) +
+  labs(title="Nice negative correlation between preheat temp and finish time")
 ```
