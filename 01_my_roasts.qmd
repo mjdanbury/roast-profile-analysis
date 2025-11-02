@@ -29,10 +29,10 @@ library(tidyverse)
 ## Read in data
 
 ```{r}
-paths <- list.files("data/")
+paths <- list.files("data/my-roasts/")
 D_roasts <- paths |>
   set_names(basename) |> 
-  map(\(path) read_csv(str_c("data/",path),skip = 19)) |>
+  map(\(path) read_csv(str_c("data/my-roasts/",path),skip = 19)) |>
   list_rbind(names_to = "file") |>
   mutate(
     date = str_extract(file,"(\\d{4}-\\d{2}-\\d{2})_(\\d*)_(\\D*)_(\\D*)_(\\D*)_(\\d*)g_(\\d*)g.csv", group = 1),
