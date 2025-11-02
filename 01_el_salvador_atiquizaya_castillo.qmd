@@ -26,111 +26,67 @@ Idea will be to have the following tables
 library(tidyverse)
 ```
 
-## n = 1
+## Read in data
 
 ```{r}
-roast_1 <- read_csv('data/el_salvador_atiquizaya_castillo/2025-03-11_El Salvador Atiquizaya Castillo #1.csv',
-                    skip = 19)
-```
-
-```{r}
-metadata_1 <- read_csv('data/el_salvador_atiquizaya_castillo/2025-03-11_El Salvador Atiquizaya Castillo #1.csv',
-                       n_max = 19)
-```
-
-```{r}
-roast_1 |>
-  ggplot() +
-  geom_line(aes(x=Time, y = `Bean Probe Temp`)) +
-  geom_line(aes(x=Time, y = `Bean Probe ROR`*10), color = "tan") +
-  scale_y_continuous(limits = c(0,300)) +
-  theme_minimal()
-```
-
-## El Salvador
-
-```{r}
-paths <- list.files("data/el_salvador_atiquizaya_castillo/")
-D_el_salvador <- paths |>
+paths <- list.files("data/")
+D_roasts <- paths |>
   set_names(basename) |> 
-  map(\(path) read_csv(str_c("data/el_salvador_atiquizaya_castillo/",path),
-                       skip = 19)) |>
-  list_rbind(names_to = "roast") |>
+  map(\(path) read_csv(str_c("data/",path),skip = 19)) |>
+  list_rbind(names_to = "file") |>
   mutate(
-    roast = str_extract(roast,"(\\d).csv$", group = 1),
-    roast = as.character(roast)
-    )
+    date = str_extract(file,"(\\d{4}-\\d{2}-\\d{2})_(\\d*)_(\\D*)_(\\D*)_(\\D*)_(\\d*)g_(\\d*)g.csv", group = 1),
+    id = str_extract(file,"(\\d{4}-\\d{2}-\\d{2})_(\\d*)_(\\D*)_(\\D*)_(\\D*)_(\\d*)g_(\\d*)g.csv", group = 2),
+    country = str_extract(file,"(\\d{4}-\\d{2}-\\d{2})_(\\d*)_(\\D*)_(\\D*)_(\\D*)_(\\d*)g_(\\d*)g.csv", group = 3),
+    name = str_extract(file,"(\\d{4}-\\d{2}-\\d{2})_(\\d*)_(\\D*)_(\\D*)_(\\D*)_(\\d*)g_(\\d*)g.csv", group = 4),
+    process = str_extract(file,"(\\d{4}-\\d{2}-\\d{2})_(\\d*)_(\\D*)_(\\D*)_(\\D*)_(\\d*)g_(\\d*)g.csv", group = 5),
+    charge_weight = str_extract(file,"(\\d{4}-\\d{2}-\\d{2})_(\\d*)_(\\D*)_(\\D*)_(\\D*)_(\\d*)g_(\\d*)g.csv", group = 6),
+    yield_weight = str_extract(file,"(\\d{4}-\\d{2}-\\d{2})_(\\d*)_(\\D*)_(\\D*)_(\\D*)_(\\d*)g_(\\d*)g.csv", group = 7),
+  )
+```
+
+## Data Viz
+
+```{r}
+distinct(D_roasts, name, id)
 ```
 
 ```{r}
-D_el_salvador |> 
-  ggplot(aes(x=Time, y = `Bean Probe Temp`, color = roast)) +
-  geom_line() +
-  scale_y_continuous(breaks = seq(0,220, by=10)) +
-  theme_minimal()+
-  labs(title = "El Salvador Atiquizaya Castillo")
-```
-
-```{r}
-#El Salvador Atiquizaya Castillo
-ggplot() +
-  geom_rect(aes(xmin=hm("8:30"),xmax=hm("10:30"),ymin=205,ymax=209),
-            fill="tan") +
-  geom_hline(yintercept = 205, linetype="dotted", color="tan") +
-  geom_rect(aes(xmin=hm("10:30"),xmax=hm("11:30"),ymin=209,ymax=212),
-            fill="peru") +
-  geom_hline(yintercept = 209, linetype="dotted", color="peru") +
-  geom_rect(aes(xmin=hm("11:30"),xmax=hm("12:30"),ymin=212,ymax=218),
-            fill="saddlebrown") +
-  geom_hline(yintercept = 212, linetype="dotted", color="saddlebrown") +
-  geom_line(aes(x=Time, y = `IBTS Temp`, color = roast), data=D_el_salvador) +
-  theme_minimal() +
-  labs(title = "El Salvador Atiquizaya Castillo - Infrared Temperature Sensor Curves")
-```
-
-```{r}
-D_el_salvador |> 
-  ggplot(aes(x=Time, y = `Bean Probe ROR`, color = roast)) +
-  geom_line() +
-  labs(title = "El Salvador Atiquizaya Castillo") +
-  scale_y_continuous(limits = c(0,30))
-```
-
-```{r}
-D_el_salvador |> 
+#Probe, IBTS, and ROR curves
+D_roasts |> 
+  filter(
+    id == 1
+  ) |> 
   ggplot() +
   geom_line(aes(x=Time, y = `Bean Probe Temp`)) +
   geom_line(aes(x=Time, y = `IBTS Temp`), color = "skyblue") +
   geom_line(aes(x=Time, y = `Bean Probe ROR`*10), color = "tan") +
   scale_y_continuous(limits = c(0,300)) +
-  labs(title = 'Roasts of El Salvador Atiquizaya Castillo')+
-  theme_minimal() +
-  facet_wrap(~roast)
-```
-
-## Ethiopia Shakiso Wesi
-
-```{r}
-paths <- list.files("data/ethiopia_shakiso_wesi/")
-D_shakiso_wesi <- paths |>
-  set_names(basename) |> 
-  map(\(path) read_csv(str_c("data/ethiopia_shakiso_wesi/",path), skip = 19)) |> 
-  list_rbind(names_to = "roast") |>
-  mutate(
-    roast = str_extract(roast,"(\\d).csv$", group = 1),
-    roast = as.character(roast)
-    )
+  theme_minimal()
 ```
 
 ```{r}
-D_shakiso_wesi |> 
-  ggplot(aes(x=Time, y = `Bean Probe Temp`, color = roast)) +
-  geom_line() +
-  labs(title = "Ethiopia Shakiso Wesi")
+#Bean probe tempreature curves
+D_roasts |> 
+  filter(
+    id == 15 | id == 13 | id == 16
+  ) |> 
+  ggplot(aes(x=Time, y = `Bean Probe Temp`, color = id)) +
+  geom_line(alpha=0.7) +
+  scale_y_continuous(breaks = seq(0,220, by=10)) +
+  theme_minimal()
+  #labs(title = "El Salvador Atiquizaya Castillo")
 ```
 
 ```{r}
+#IBTS tempreature curves + targets
+D_roasts |> 
+  # filter(
+  #   id == 15 | id == 13 | id == 11
+  # ) |> 
 ggplot() +
+  geom_rect(aes(xmin=hm("6:45"),xmax=hm("9:05"),ymin=198,ymax=200),
+            fill="grey") +
   geom_rect(aes(xmin=hm("8:30"),xmax=hm("10:30"),ymin=205,ymax=209),
             fill="tan") +
   geom_hline(yintercept = 205, linetype="dotted", color="tan") +
@@ -140,34 +96,34 @@ ggplot() +
   geom_rect(aes(xmin=hm("11:30"),xmax=hm("12:30"),ymin=212,ymax=218),
             fill="saddlebrown") +
   geom_hline(yintercept = 212, linetype="dotted", color="saddlebrown") +
-  geom_line(aes(x=Time, y = `IBTS Temp`, color = roast), data=D_shakiso_wesi) +
+  geom_line(aes(x=Time, y = `IBTS Temp`, color = id),alpha=0.7) +
   theme_minimal() +
-  labs(title = "Ethiopia Shakiso Wesi - IBTS Curves")
-```
-
-## Ethiopia Dry Process Korate
-
-```{r}
-paths <- list.files("data/ethiopia_dry_process_korate/")
-D_korate <- paths |>
-  set_names(basename) |> 
-  map(\(path) read_csv(str_c("data/ethiopia_dry_process_korate/",path), skip = 19)) |> 
-  list_rbind(names_to = "roast") |>
-  mutate(
-    roast = str_extract(roast,"(\\d).csv$", group = 1),
-    roast = as.character(roast)
-    )
+  facet_wrap(~name)
+  #labs(title = "El Salvador Atiquizaya Castillo - Infrared Temperature Sensor Curves")
 ```
 
 ```{r}
-D_korate |> 
-  ggplot(aes(x=Time, y = `Bean Probe Temp`, color = roast)) +
-  geom_line() +
-  labs(title = "Ethiopia Dry Process Korate")
+#Probe, IBTS, and ROR curves for a single roast id
+D_roasts |> 
+  filter(
+    id == 15 | id == 13 | id == 16
+  ) |> 
+  ggplot() +
+  geom_line(aes(x=Time, y = `Bean Probe Temp`)) +
+  geom_line(aes(x=Time, y = `IBTS Temp`), color = "skyblue") +
+  geom_line(aes(x=Time, y = `Bean Probe ROR`*10), color = "tan") +
+  scale_y_continuous(limits = c(0,300)) +
+  #labs(title = 'Roasts of El Salvador Atiquizaya Castillo')+
+  ylab("")+
+  theme_minimal() +
+  facet_wrap(~id)
 ```
 
 ```{r}
-ggplot() +
+D_roasts |> 
+  ggplot() +
+  geom_rect(aes(xmin=hm("6:45"),xmax=hm("9:05"),ymin=198,ymax=200),
+            fill="grey") +
   geom_rect(aes(xmin=hm("8:30"),xmax=hm("10:30"),ymin=205,ymax=209),
             fill="tan") +
   geom_hline(yintercept = 205, linetype="dotted", color="tan") +
@@ -177,9 +133,25 @@ ggplot() +
   geom_rect(aes(xmin=hm("11:30"),xmax=hm("12:30"),ymin=212,ymax=218),
             fill="saddlebrown") +
   geom_hline(yintercept = 212, linetype="dotted", color="saddlebrown") +
-  geom_line(aes(x=Time, y = `IBTS Temp`, color = roast), data=D_korate) +
+  geom_line(aes(x=Time, y = `Bean Probe Temp`)) +
+  geom_line(aes(x=Time, y = `IBTS Temp`), color = "skyblue") +
+  geom_line(aes(x=Time, y = `Bean Probe ROR`*10), color = "tan") +
+  scale_y_continuous(limits = c(0,300)) +
+  #labs(title = 'Roasts of Ethiopia Dry Process Korate')+
   theme_minimal() +
-  labs(title = "Ethiopia Dry Process Korate - IBTS Curves")
+  facet_wrap(~id)
 ```
 
 TODO - It would be nice to create a `bean` column and see how events change for different roasts
+
+```{r}
+data.frame(w = c(350, 500, 750, 1000),
+           t = c(220, 250, 280, 310),
+           l = c(200, 230, 275, 310),
+           u = c(240, 275, 310, 310)) |> 
+  ggplot() +
+  geom_line(aes(x = w, y=t)) +
+  geom_line(aes(x = w, y=l)) +
+  geom_line(aes(x = w, y=u)) +
+  geom_vline(xintercept=450, linetype="dashed")
+```
