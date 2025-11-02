@@ -1,0 +1,117 @@
+# Royal Crown Jewels
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+paths <- list.files("data/crown-jewels/")
+D_jewels <- paths |>
+  set_names(basename) |> 
+  map(\(path) read_csv(str_c("data/crown-jewels/",path),skip = 19)) |>
+  list_rbind(names_to = "file") |> 
+  mutate(
+    date = str_extract(file,"^\\d{4}-\\d{2}-\\d{2}") |> ymd(),
+    id = str_extract(file,"CJO?\\d{4}")
+  ) |> 
+  group_by(file) |> 
+  mutate(
+    preheat_temp = first(`IBTS Temp`),
+    finish_temp = last(`IBTS Temp`),
+    finish_time = last(Time)
+  ) |> 
+  ungroup()
+```
+
+```{r}
+D_jewels |> distinct(id)
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=Time, y = `IBTS Temp`, group = file, color=date)) +
+  geom_line(alpha=0.3) +
+  theme_minimal() +
+  facet_wrap(~factor(year(date)))
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=Time, y = `Bean Probe Temp`, group = file, color=date)) +
+  geom_line(alpha=0.1) +
+  theme_minimal() +
+  facet_wrap(~factor(year(date)))
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=Time, y = `Bean Probe ROR`, group = file, color=date)) +
+  geom_line(alpha=0.1) +
+  scale_y_continuous(limits = c(0,30)) +
+  theme_minimal() +
+  facet_wrap(~factor(year(date)))
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=Time, y = `Power Setting`)) +
+  geom_area(alpha=0.5)+
+  #scale_y_continuous(limits = c(0,30)) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
+  facet_wrap(~factor(year(date)))
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=Time, y = `Fan Setting`)) +
+  geom_area(alpha=0.5) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
+  facet_wrap(~factor(year(date)))
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=Time, y = `Drum Setting`)) +
+  geom_area(alpha=0.5)+
+  theme_minimal() +
+  scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
+  facet_wrap(~factor(year(date)))
+```
+
+TODO - End Temperature (y) vs End Time (x) faceted by year AND/OR colored by process method/origin/cultivar. Could also add in Yellowing Temperature and Yellowing Time as well as FC Temperature and FC Time to the same plot. All temperatures IBTS.
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=date,y=preheat_temp)) +
+  geom_point(size=0.7) +
+  scale_y_continuous(breaks=c(200,210,220,230,240,250,260))
+  labs(title="Preheat temps over time")
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=date,y=finish_temp)) +
+  geom_point(size=0.7) +
+  geom_smooth() +
+  labs(title="Finish temperatures",
+       subtitle = "Is there a seasonal compenent or is that just chance?")
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=date,y=finish_time)) +
+  geom_point(size=0.7) +
+  geom_smooth() +
+  labs(title="Finish times")
+```
+
+```{r}
+D_jewels |> 
+  ggplot(aes(x=finish_time,y=finish_temp, group = file, color=date)) +
+  geom_point(size=0.7) +
+  geom_rug() +
+  scale_y_continuous(limits = c(195,210)) +
+  facet_wrap(~factor(year(date)))
+```
