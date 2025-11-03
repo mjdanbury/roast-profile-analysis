@@ -249,3 +249,7 @@ D_jewels |>
   geom_smooth(method="lm")+
   labs(title="Nice negative correlation between preheat temp and finish time")
 ```
+
+Note to self - At first I thought it was really weird that FC *temp* was decreasing over time, but honestly with both the power settings and preheat temp changing, maybe that should come as less of a surprise. The IBTS measures surface temperatures, and perhaps FC depends on more than the surface temperature of the bean.
+
+TODO - Explore this by using BT data.
