@@ -15,7 +15,9 @@ countries <- c("Kenya","Ethiopia","Uganda","Honduras","Panama","Sumatra","Colomb
 
 D_jewels <- paths |>
   set_names(basename) |> 
-  map(\(path) read_csv(str_c("data/royal-crown-jewels/",path),skip = 19)) |>
+  map(\(path) read_csv(str_c("data/royal-crown-jewels/",path),
+                       skip = 19,
+                       show_col_types = FALSE)) |>
   list_rbind(names_to = "file") |> 
   mutate(
     date = str_extract(file,"^\\d{4}-\\d{2}-\\d{2}") |> ymd(),
@@ -32,15 +34,30 @@ D_jewels <- paths |>
 ```
 
 ```{r}
-D_jewels |> filter(
-  is.na(country)
-)
+D_events <- paths |> 
+  set_names(basename) |> 
+  map(\(path) read_csv(str_c("data/royal-crown-jewels/",path),
+                       n_max=19,
+                       show_col_types = FALSE)) |>
+  list_rbind(names_to = "file") |>
+  group_by(file) |> 
+  mutate(
+    yellow_time = nth(c3, 16) |> parse_time(),
+    fc_time = nth(c3, 9) |> parse_time()
+  ) |> 
+  ungroup() |> 
+  distinct(file, yellow_time, fc_time)
 ```
 
 ```{r}
-D_jewels |> filter(
-  is.na(id)
-)
+D_jewels <- D_jewels |> 
+  right_join(D_events,by = join_by(file)) |> 
+  group_by(file) |> 
+  mutate(
+    fc_temp = `IBTS Temp`[Time == fc_time],
+    yellow_temp = `IBTS Temp`[Time == yellow_time]
+  ) |>
+  ungroup()
 ```
 
 ```{r}
@@ -96,44 +113,108 @@ D_jewels |>
   facet_wrap(~factor(year(date)))
 ```
 
-TODO - End Temperature (y) vs End Time (x) faceted by year AND/OR colored by process method/origin/cultivar. Could also add in Yellowing Temperature and Yellowing Time as well as FC Temperature and FC Time to the same plot. All temperatures IBTS.
-
 ```{r}
 D_jewels |> 
+  distinct(file, date, preheat_temp) |> 
   ggplot(aes(x=date,y=preheat_temp)) +
-  geom_point(size=0.7) +
+  geom_point(size=1, alpha=0.6) +
   scale_y_continuous(breaks=c(200,210,220,230,240,250,260))+
-  labs(title="Preheat temps over time")
+  labs(title="Charge Temperature v.s. Roast Date")
 ```
 
 ```{r}
-D_jewels |> 
+D_jewels |>
+  distinct(file, date, finish_time) |> 
   ggplot(aes(x=date,y=finish_time)) +
-  geom_point(size=0.7) +
-  labs(title="Finish times")
+  geom_point(size=1, alpha=0.6) +
+  labs(title="Drop Time v.s. Roast Date")
 ```
 
 ```{r}
-D_jewels |> 
+D_jewels |>
+  distinct(file, date, finish_temp) |>
   ggplot(aes(x=date,y=finish_temp)) +
-  geom_point(size=0.7) +
-  labs(title="Finish temperatures")
+  geom_point(size=1, alpha=0.6) +
+  scale_y_continuous(limits=c(195,210))+
+  labs(title="Drop temperature v.s. Roast Date")
 ```
 
 ```{r}
 D_jewels |> 
+  distinct(file, date, fc_temp)|>
+  ggplot(aes(x=date,y=fc_temp)) +
+  geom_point(size=1, alpha=0.6) +
+  #scale_y_continuous(limits=c(195,210))+
+  labs(title="First Crack Temperature v.s. Roast Date")
+```
+
+```{r}
+D_jewels |> 
+  distinct(file, date, fc_time)|>
+  ggplot(aes(x=date,y=fc_time)) +
+  geom_point(size=1, alpha=0.6) +
+  #scale_y_continuous(limits=c(195,210))+
+  labs(title="First Crack Time v.s. Roast Date")
+```
+
+```{r}
+D_jewels |> 
+  distinct(file, date, yellow_temp)|>
+  ggplot(aes(x=date,y=yellow_temp)) +
+  geom_point(size=1, alpha=0.6) +
+  #scale_y_continuous(limits=c(195,210))+
+  labs(title="Yellowing Temperature v.s. Roast Date")
+```
+
+```{r}
+D_jewels |> 
+  distinct(file, date, yellow_time)|>
+  ggplot(aes(x=date,y=yellow_time)) +
+  geom_point(size=1, alpha=0.6) +
+  #scale_y_continuous(limits=c(195,210))+
+  labs(title="Yellowing Time v.s. Roast Date")
+```
+
+```{r}
+D_jewels |>
+  distinct(file, date, finish_temp, finish_time) |>
   ggplot(aes(x=finish_time,y=finish_temp, group = file, color=date)) +
   geom_point(size=0.7) +
   geom_rug() +
   scale_y_continuous(limits = c(195,210)) +
-  facet_wrap(~factor(year(date)))
+  facet_wrap(~factor(year(date))) +
+  labs(title = "Drop Time and Temperature")
 ```
 
-TODO - Process Yellowing + First Crack Info from files. Show plots of times, temperatures of yellowing and first crack, as well as plots of times of percentages spent in each roast phase. (High value, can inform my roasting)
+```{r}
+D_jewels |>
+  distinct(file, date, fc_temp, fc_time) |>
+  ggplot(aes(x=fc_time,y=fc_temp, group = file, color=date)) +
+  geom_point(size=0.7) +
+  geom_rug() +
+  #scale_y_continuous(limits = c(195,210)) +
+  facet_wrap(~factor(year(date))) +
+  labs(title = "First Crack Time and Temperature")
+```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=finish_time, y=preheat_temp))+
+D_jewels |>
+  distinct(file, date, yellow_temp, yellow_time) |>
+  ggplot(aes(x=yellow_time,y=yellow_temp, group = file, color=date)) +
   geom_point(size=0.7) +
+  geom_rug() +
+  #scale_y_continuous(limits = c(195,210)) +
+  facet_wrap(~factor(year(date))) +
+  labs(title = "Yellowing Time and Temperature")
+```
+
+TODO - Plots of times of percentages spent in each roast phase. (High value, can inform my roasting)
+
+```{r}
+D_jewels |>
+  distinct(file, preheat_temp, fc_temp) |>
+  ggplot(aes(x=fc_temp, y=preheat_temp))+
+  geom_point(size=0.7) +
+  geom_smooth(method="lm")+
   labs(title="Nice negative correlation between preheat temp and finish time")
 ```
