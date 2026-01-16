@@ -6,250 +6,628 @@ For a while I found it to be less of a gold mine than a junk heap. That is, unti
 
 ```{r}
 library(tidyverse)
+library(GGally)
+library(umap)
+library(ggiraph)
+library(patchwork)
+library(stringi)
 ```
 
+## 1. Wrangling
+
 ```{r}
+#Get roast curves
+
 paths <- list.files("data/royal-crown-jewels/")
 
-countries <- c("Kenya","Ethiopia","Uganda","Honduras","Panama","Sumatra","Colombia","Ecuador","Peru","Sulawesi","Rwanda","Brazil","Papua New Guinea","Burundi","Guatemala","Costa Rica","Bolivia","Mexico","Timor Leste","Tanzania","Bali")
-
-D_jewels <- paths |>
+D_curves <- paths |> 
   set_names(basename) |> 
   map(\(path) read_csv(str_c("data/royal-crown-jewels/",path),
                        skip = 19,
-                       show_col_types = FALSE)) |>
-  list_rbind(names_to = "file") |> 
+                       col_types = cols(Time = col_character())
+                       )
+      ) |>
+  list_rbind(names_to = "file") |>
+  janitor::clean_names() |>
   mutate(
+    time = ms(time),
     date = str_extract(file,"^\\d{4}-\\d{2}-\\d{2}") |> ymd(),
-    id = str_extract(file,"CJO?\\d{4}"),
-    country = str_extract(file, paste(countries, collapse = "|"))
-  ) |> 
-  group_by(file) |> 
-  mutate(
-    preheat_temp = first(`IBTS Temp`),
-    finish_temp = last(`IBTS Temp`),
-    finish_time = last(Time)
-  ) |> 
-  ungroup()
+    year = year(date),
+    name = str_extract(file,"^\\d{4}-\\d{2}-\\d{2}_(.+).csv$", group = 1) |> 
+      enc2utf8() |> 
+      stri_trans_nfc() |> 
+      str_trim(),
+    id = str_extract(file,"CJO?\\d{4}")
+  )
 ```
 
 ```{r}
-D_events <- paths |> 
+#Get Yellow + First Crack time markers from CSVs
+
+paths <- list.files("data/royal-crown-jewels/")
+
+D_roasts <- paths |> 
   set_names(basename) |> 
   map(\(path) read_csv(str_c("data/royal-crown-jewels/",path),
                        n_max=19,
-                       show_col_types = FALSE)) |>
+                       col_types = cols(c3 = col_character())
+                       )
+      ) |>
   list_rbind(names_to = "file") |>
   group_by(file) |> 
   mutate(
-    yellow_time = nth(c3, 16) |> parse_time(),
-    fc_time = nth(c3, 9) |> parse_time()
+    time_yellow = nth(c3, 16) |> ms(),
+    time_fc = nth(c3, 9) |> ms()
   ) |> 
   ungroup() |> 
-  distinct(file, yellow_time, fc_time)
-```
+  distinct(file, time_yellow, time_fc) 
 
-```{r}
-D_jewels <- D_jewels |> 
-  right_join(D_events,by = join_by(file)) |> 
+#Get event data from roast curves
+
+D_roasts <- D_curves |> 
+  right_join(D_roasts,by = join_by(file)) |>
   group_by(file) |> 
   mutate(
-    fc_temp = `IBTS Temp`[Time == fc_time],
-    yellow_temp = `IBTS Temp`[Time == yellow_time]
-  ) |>
-  ungroup()
+    temp_ibts_start = first(ibts_temp),
+    temp_ibts_yellow = ibts_temp[time == time_yellow],
+    temp_ibts_fc = ibts_temp[time == time_fc],
+    temp_ibts_end = last(ibts_temp),
+    temp_bean_probe_start = first(bean_probe_temp),
+    temp_bean_probe_turning = min(bean_probe_temp),
+    temp_bean_probe_yellow = bean_probe_temp[time == time_yellow],
+    temp_bean_probe_fc = bean_probe_temp[time == time_fc],
+    temp_bean_probe_end = last(bean_probe_temp),
+    time_turning = time[bean_probe_temp == temp_bean_probe_turning][1],
+    ror_bean_probe_max = max(bean_probe_ror),
+    time_max_ror = time[bean_probe_ror == ror_bean_probe_max][1],
+    duration_drying = time_yellow,
+    duration_maillard = time_fc - time_yellow,
+    duration_development = last(time) - time_fc,
+    duration_total = last(time),
+    pct_drying = duration_drying / duration_total,
+    pct_maillard = duration_maillard /duration_total,
+    pct_development = duration_development / duration_total
+  ) |> 
+  ungroup() |> 
+  select(-c(timeline:fan_setting)) |> 
+  distinct()
+
+
+#Get origin from file
+
+countries <- c("Kenya","Ethiopia","Uganda","Honduras","Panama","Sumatra","Colombia","Ecuador","Peru","Sulawesi","Rwanda","Brazil","Papua New Guinea","Burundi","Guatemala","Costa Rica","Bolivia","Mexico","Timor Leste","Tanzania","Bali")
+
+
+D_roasts <- D_roasts |> 
+  mutate(
+    country = str_extract(file, paste(countries, collapse = "|"))
+  )
 ```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y = `IBTS Temp`, group = file, color=date)) +
-  geom_line(alpha=0.3) +
+#Get data on physical bean characteristics
+D_bean_char <- read_csv('data/crown_jewels_urls_loss.csv') |> 
+  mutate(
+    name = name |> enc2utf8() |> stri_trans_nfc()
+  ) |> 
+  select(-c(id,bean,url,pdf))
+
+# anti.join <- D_bean_char |> 
+#   anti_join(D_roasts, by = join_by(name_from_csv == name_from_file))
+
+D_roasts <- D_roasts |>
+  right_join(D_bean_char, by = join_by(name))
+```
+
+⚠️ TODO - Learn more about processing. Seems like a leaky abstraction.
+
+```{r}
+# mutate(
+#   process_simplified = case_when(
+#     str_detect(file,
+#                regex("Decaf", ignore_case = TRUE)) ~ "decaf",
+#     str_detect(file,
+#                regex("Anaerobic", ignore_case = TRUE)) ~ "anaerobic",
+#     str_detect(file,
+#                regex("Honey", ignore_case = TRUE)) ~ "honey",
+#     str_detect(file,
+#                regex("Hull", ignore_case = TRUE)) ~ "wet hulled",
+#     str_detect(file,
+#                regex("Monsoon", ignore_case = TRUE)) ~ "monsoon",
+#     str_detect(file,
+#                regex("Wet|Washed", ignore_case = TRUE)) ~ "washed",
+#     str_detect(file,
+#                regex("Dry|Natural", ignore_case = TRUE)) ~ "dry",
+#     TRUE ~ NA_character_
+#   )
+# ) |> 
+```
+
+## 2. Summary Stats
+
+Table stakes: weight loss (12.5% ± 1%) , drying ratio (42% ± 3%), maillard ratio (40% ± 5%), development ratio (17% ± 4%) , end temperatures.
+
+```{r}
+D_roasts |> 
+  filter(year >= 2023) |> 
+  summarise(
+    mean_dry = mean(pct_drying),
+    sd_dry = sd(pct_drying),
+    mean_mai = mean(pct_maillard),
+    sd_mai = sd(pct_maillard),
+    mean_dev = mean(pct_development),
+    sd_dev = sd(pct_development),
+  )
+```
+
+```{r}
+D_roasts |> count(country)
+```
+
+```{r}
+D_roasts |>
+  summarise(
+    mean_p_free = mean(density_free_settled, na.rm=TRUE),
+    sd_p_free = sd(density_free_settled, na.rm=TRUE),
+    mean_p_sinar = mean(density_sinar, na.rm=TRUE),
+    sd_p_sinar = sd(density_sinar, na.rm=TRUE),
+    mean_pct_moisture = mean(moisture_pct, na.rm=TRUE),
+    sd_pct_moisture = sd(moisture_pct, na.rm=TRUE),
+    mean_water_activity = mean(water_activity, na.rm=TRUE),
+    sd_water_activity = sd(water_activity, na.rm=TRUE)
+  )
+```
+
+## 3. EDA
+
+### a. Sensor Curves by Year
+
+```{r}
+D_curves |> 
+  ggplot(aes(x=time, y = ibts_temp, group = file)) +
+  # geom_rect(aes(xmin=ms("6:45"),xmax=ms("9:05"),ymin=198,ymax=200),
+  #           fill="grey") +
+  # geom_rect(aes(xmin=ms("8:30"),xmax=ms("10:30"),ymin=205,ymax=209),
+  #           fill="tan") +
+  # geom_hline(yintercept = 205, linetype="dotted", color="tan") +
+  # geom_rect(aes(xmin=ms("10:30"),xmax=ms("11:30"),ymin=209,ymax=212),
+  #           fill="peru") +
+  # geom_hline(yintercept = 209, linetype="dotted", color="peru") +
+  # geom_rect(aes(xmin=ms("11:30"),xmax=ms("12:30"),ymin=212,ymax=218),
+  #           fill="saddlebrown") +
+  # geom_hline(yintercept = 212, linetype="dotted", color="saddlebrown") +
+  geom_line(aes(color=date),alpha=0.3) +
   theme_minimal() +
-  facet_wrap(~factor(year(date)))
+  scale_x_time(limits = c(ms("0:00"),ms("15:00"))) +
+  facet_wrap(~year) +
+  labs(title = "IBTS Curves by Year")
 ```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y = `Bean Probe Temp`, group = file, color=date)) +
+D_curves |> 
+  ggplot(aes(x=time, y = bean_probe_temp, group = file, color=date)) +
   geom_line(alpha=0.1) +
+  scale_x_time(limits = c(ms("0:00"),ms("15:00"))) +
   theme_minimal() +
-  facet_wrap(~factor(year(date)))
+  facet_wrap(~year) +
+  labs(title = "BT Curves by Year")
 ```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y = `Bean Probe ROR`, group = file, color=date)) +
+D_curves |> 
+  ggplot(aes(x=time, y = bean_probe_ror, group = file, color=date)) +
   geom_line(alpha=0.1) +
+  scale_x_time(limits = c(ms("0:00"),ms("15:00"))) +
   scale_y_continuous(limits = c(0,30)) +
   theme_minimal() +
-  facet_wrap(~factor(year(date)))
+  facet_wrap(~year) +
+  labs(title = "BT ROR Curves by Year")
 ```
 
+### b. Profile Curves by Year
+
+⚠️TODO - Normalize these by year.
+
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y = `Power Setting`, group=file)) +
-  geom_area(alpha=0.1, position = "identity")+
-  #scale_y_continuous(limits = c(0,30)) +
+D_curves |> 
+  group_by(year, time, power_setting) |> 
+  summarise(n = n_distinct(file), .groups = 'drop') |> 
+  ungroup() |>
+  ggplot(aes(x=time, y = power_setting, alpha = n/143)) +
+  geom_tile(fill="red") +
+  scale_x_time(limits = c(ms("0:00"),ms("15:00"))) +
   theme_minimal() +
   scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
-  facet_wrap(~factor(year(date)))
+  facet_wrap(~year) +
+  labs(title = "Power Setting Profiles by Year")
 ```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y=`Power Setting`)) +
-  geom_point(size=0.7,alpha=0.008) +
-  geom_smooth() +
+D_curves |> 
+  group_by(year, time, fan_setting) |> 
+  summarise(n = n_distinct(file), .groups = 'drop') |> 
+  ungroup() |>
+  ggplot(aes(x=time, y = fan_setting, alpha = n/143)) +
+  geom_tile(fill="red") +
+  scale_x_time(limits = c(ms("0:00"),ms("15:00"))) +
   theme_minimal() +
   scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
-  facet_wrap(~factor(year(date)))
+  facet_wrap(~year) +
+  labs(title = "Fan Setting Profiles by Year")
 ```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y = `Fan Setting`, group=file)) +
-  geom_area(alpha=0.1, position = "identity") +
-  #geom_smooth()+
+D_curves |> 
+  group_by(year, time, drum_setting) |> 
+  summarise(n = n_distinct(file), .groups = 'drop') |> 
+  ungroup() |>
+  ggplot(aes(x=time, y = drum_setting, alpha = n/143)) +
+  geom_tile(fill="red") +
+  scale_x_time(limits = c(ms("0:00"),ms("15:00"))) +
   theme_minimal() +
   scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
-  facet_wrap(~factor(year(date)))
+  facet_wrap(~year) +
+  labs(title = "Drum Setting Profiles by Year")
 ```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y=`Fan Setting`)) +
-  geom_point(size=0.7,alpha=0.008) +
-  geom_smooth() +
+power.profiles <- D_curves |> 
+  filter(year >= 2023) |> 
+  pivot_longer(
+    cols = c(power_setting,drum_setting,fan_setting),
+    names_to = "control",
+    values_to = "setting",
+    names_pattern = "(.+)_setting$"
+  ) |>
+  group_by(control, time, setting) |> 
+  summarise(n = n_distinct(file), .groups = "drop") |>
+  ungroup()
+
+ggplot() +
+  geom_tile(data=power.profiles, aes(x = time, y = setting, fill = n)) +
+  geom_histogram(data=D_roasts |> filter(year(date) >= 2023), 
+             aes(x=time_yellow,
+                 y = after_stat(count / 8)),
+             alpha=0.3,
+             bins = 30,
+             fill="gold") +
+  geom_histogram(data=D_roasts |> filter(year(date) >= 2023), 
+             aes(x=time_fc,
+                 y = after_stat(count / 8)),
+             alpha=0.3,
+             bins = 30) +
+  geom_histogram(data=D_roasts |> filter(year(date) >= 2023), 
+             aes(x=duration_total,
+                 y = after_stat(count / 8)),
+             alpha=0.3,
+             bins = 30,
+             fill="skyblue") +
+  facet_wrap(~control, ncol=1) + 
+  scale_x_time(limits = c(ms("0:00"),ms("13:00")),
+               breaks = c(ms("0:00"),ms("1:00"),ms("2:00"),ms("3:00"),ms("4:00"),ms("5:00"),ms("6:00"),ms("7:00"),ms("8:00"),ms("9:00"),ms("10:00"),ms("11:00"),ms("12:00"),ms("13:00"))) +
+  scale_y_continuous(breaks=0:9) +
+  scale_fill_continuous(palette = c("white", "#FEE0D2", "#FC9272", "#DE2D26"))+
   theme_minimal() +
-  scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
-  facet_wrap(~factor(year(date)))
+  labs(title="Settings Heatmaps for 2023 onward",
+       subtitle = "Histograms show phase change time distributions")
+```
+
+⚠️IDEA - model roast phase (\< turning point, \< peak ROR, \< Yellowing, \< FC, \< End) as an ordinal variable (1, 2, 3, 4, 5)
+
+### c. Event Temperatures by Year
+
+```{r}
+D_roasts |> 
+  filter(year >= 2023) |> 
+  summarise(
+    mean_ibts_preheat_temp = mean(temp_ibts_start),
+    sd_ibts_preheat_temp = sd(temp_ibts_start),
+    mean_probe_preheat_temp = mean(temp_bean_probe_start),
+    sd_probe_preheat_temp = sd(temp_bean_probe_start),
+  )
+```
+
+This is another great presentation graphic. Things that change versus things that stay the same.
+
+```{r}
+D_roasts |> 
+  ggplot(aes(x=date)) +
+  geom_smooth(aes(y = temp_ibts_yellow), color = "gold") +
+  geom_smooth(aes(y = temp_ibts_fc), color = "peru") +
+  geom_smooth(aes(y = temp_ibts_end), color="#008080") +
+  geom_smooth(aes(y = temp_ibts_start), color="black") +
+  geom_smooth(aes(y = temp_bean_probe_start), color="purple") +
+  geom_point(aes(y = temp_ibts_yellow), color = "gold", alpha=0.7) +
+  geom_point(aes(y = temp_ibts_fc), color = "peru", alpha=0.7) +
+  geom_point(aes(y = temp_ibts_end), color = "#008080",alpha=0.7) +
+  geom_point(aes(y = temp_ibts_start), color = "black",alpha=0.7) +
+  geom_point(aes(y = temp_bean_probe_start), color="purple", alpha=0.7) +
+  scale_y_continuous(limits = c(140,260), n.breaks = 10) +
+  theme_minimal()+
+  ylab("Temperature (ºC)") +
+  labs(title = "Event Temperatures by Year",
+       subtitle = "Preheat, Yellowing, First Crack, and End Temperatures")
+```
+
+### d. Phase Duration by Year
+
+These are really cool. They show what remains constant (share of time spent in roast phases) versus what changes (total roast time) as an experienced roaster gets acquainted with the Bullet.
+
+Seems like phase shares are targets? **Would be curious to know if there's any structure to the residuals or if these targets are universal across greens?**
+
+```{r}
+D_roasts |> 
+  pivot_longer(
+    cols = c(pct_drying, pct_maillard, pct_development),
+    names_to = "phase",
+    values_to = "pct"
+  ) |> 
+  mutate(
+    phase = factor(phase, levels = c("pct_development", "pct_maillard", "pct_drying"))
+  ) |> 
+  ggplot(aes(x=file, y = pct, fill = phase)) +
+  geom_col() +
+  scale_fill_manual(values = c("firebrick","gold","forestgreen")) +
+  scale_x_discrete(labels = NULL) +
+  labs(title="Phase Share by Roast Number")
 ```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y = `Drum Setting`, group=file)) +
-  geom_area(alpha=0.1, position="identity")+
-  theme_minimal() +
-  scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
-  facet_wrap(~factor(year(date)))
+D_roasts |> 
+  pivot_longer(
+    cols = c(duration_drying, duration_maillard, duration_development),
+    names_to = "phase",
+    values_to = "duration"
+  ) |> 
+  mutate(
+    phase = factor(phase, levels = c("duration_development", "duration_maillard", "duration_drying"))
+  ) |> 
+  ggplot(aes(x=file, y = duration, fill = phase)) +
+  geom_col() +
+  scale_fill_manual(values = c("firebrick","gold","forestgreen")) +
+  scale_x_discrete(labels = NULL) +
+  scale_y_time() +
+  labs(title="Phase Duration by Roast Number")
+```
+
+### e. Univariate and Bivariate Distributions of Scalar Parameters
+
+```{r}
+D_roasts |> 
+  pivot_longer(
+    cols = c(pct_drying, pct_maillard, pct_development),
+    names_to = "phase"
+  ) |> 
+  ggplot(aes(x=value)) +
+  scale_x_continuous(limits = c(0,0.55),
+                     n.breaks=10) +
+  geom_histogram(bins=18) +
+  facet_wrap(~phase)
 ```
 
 ```{r}
-D_jewels |> 
-  ggplot(aes(x=Time, y=`Drum Setting`)) +
-  geom_point(size=0.7,alpha=0.008) +
-  geom_smooth() +
-  theme_minimal() +
-  scale_y_continuous(limits = c(0,9), breaks = c(0,1,2,3,4,5,6,7,8,9)) +
-  facet_wrap(~factor(year(date)))
+D_roasts |> 
+  mutate(
+    across(where(is.period), time_length)
+  ) |> 
+  summarise(
+    mean_duration_dry = mean(duration_drying, na.rm=TRUE),
+    sd_duration_dry = sd(duration_drying, na.rm=TRUE),
+    mean_duration_mai = mean(duration_maillard, na.rm=TRUE),
+    sd_duraiton_mai = sd(duration_maillard, na.rm=TRUE),
+    mean_duration_dev = mean(duration_development, na.rm=TRUE),
+    sd_duration_dev = sd(duration_development, na.rm=TRUE)
+  )
 ```
 
 ```{r}
-D_jewels |> 
-  distinct(file, date, preheat_temp) |> 
-  ggplot(aes(x=date,y=preheat_temp)) +
-  geom_point(size=1, alpha=0.6) +
-  scale_y_continuous(breaks=c(200,210,220,230,240,250,260))+
-  labs(title="Charge Temperature v.s. Roast Date")
+D_roasts |> 
+  pivot_longer(
+    cols = c(duration_drying, duration_maillard, duration_development),
+    names_to = "phase"
+  ) |> 
+  ggplot(aes(x=value)) +
+  scale_x_time() +
+  geom_histogram(bins=20) +
+  facet_wrap(~phase)
 ```
 
 ```{r}
-D_jewels |>
-  distinct(file, date, finish_time) |> 
-  ggplot(aes(x=date,y=finish_time)) +
-  geom_point(size=1, alpha=0.6) +
-  labs(title="Drop Time v.s. Roast Date")
+#Pairwise Distributions + Correlations
+p_to_stars <- function(p) {
+  if (is.na(p)) ""
+  else if (p < 0.001) "***"
+  else if (p < 0.01)  "**"
+  else if (p < 0.05)  "*"
+  else ""
+}
+
+panel_cor_bg <- function(data, mapping, ...) {
+  x <- eval_data_col(data, mapping$x)
+  y <- eval_data_col(data, mapping$y)
+  
+  ct <- suppressWarnings(cor.test(x, y, use = "complete.obs"))
+  r  <- unname(ct$estimate)
+  p  <- ct$p.value
+  stars <- p_to_stars(p)
+
+  ggplot(data.frame(r), aes(x = 0, y = 0, fill = r)) +
+    geom_tile(width = 1, height = 1) +
+    scale_fill_gradient2(
+      low = "#b2182b",
+      mid = "white",
+      high = "#4d9221",
+      midpoint = 0,
+      limits = c(-1, 1)
+    ) +
+    geom_text(aes(label = sprintf("%.2f%s", r, stars)), size = 4) +
+    theme_void() +
+    theme(legend.position = "none")
+}
+
+quiet <- function(fun) {
+  function(...) suppressWarnings(fun(...))
+}
 ```
 
 ```{r}
-D_jewels |>
-  distinct(file, date, finish_temp) |>
-  ggplot(aes(x=date,y=finish_temp)) +
-  geom_point(size=1, alpha=0.6) +
-  scale_y_continuous(limits=c(195,210))+
-  labs(title="Drop temperature v.s. Roast Date")
+D_roasts |> 
+  select(-c(file,date,name,id,country)) |> 
+  mutate(
+    across(where(is.period), time_length)
+  ) |> 
+  drop_na() |> 
+  ggpairs(
+    lower = list(
+      continuous = quiet(wrap("points", size = 0.7, alpha = 0.3))
+    ),
+    upper = list(
+      continuous = quiet(panel_cor_bg)
+    ),
+    diag = list(
+      continuous = quiet(wrap("densityDiag"))
+    ),
+    progress = FALSE
+  ) 
+```
+
+### f. UMAP
+
+```{r}
+roasts.umap <- D_roasts |> 
+  select(-c(file,date,name,id,country)) |> 
+  mutate(
+    across(where(is.period), time_length)
+  ) |>  
+  drop_na() |> 
+  umap()
 ```
 
 ```{r}
-D_jewels |> 
-  distinct(file, date, fc_temp)|>
-  ggplot(aes(x=date,y=fc_temp)) +
-  geom_point(size=1, alpha=0.6) +
-  #scale_y_continuous(limits=c(195,210))+
-  labs(title="First Crack Temperature v.s. Roast Date")
+plot(roasts.umap$layout)
 ```
 
 ```{r}
-D_jewels |> 
-  distinct(file, date, fc_time)|>
-  ggplot(aes(x=date,y=fc_time)) +
-  geom_point(size=1, alpha=0.6) +
-  #scale_y_continuous(limits=c(195,210))+
-  labs(title="First Crack Time v.s. Roast Date")
+D_roasts |> 
+  select(-c(file,date,name,id,country)) |> 
+  mutate(
+    across(where(is.period), time_length)
+  ) |>  
+  drop_na() |> 
+  bind_cols(roasts.umap$layout) |> 
+  rename(
+    umap_x = `...31`,
+    umap_y = `...32`
+  ) |> 
+  ggplot(aes(x=umap_x, y=umap_y, color=time_length(duration_total))) +
+  geom_point(alpha = 0.7)
 ```
 
 ```{r}
-D_jewels |> 
-  distinct(file, date, yellow_temp)|>
-  ggplot(aes(x=date,y=yellow_temp)) +
-  geom_point(size=1, alpha=0.6) +
-  #scale_y_continuous(limits=c(195,210))+
-  labs(title="Yellowing Temperature v.s. Roast Date")
+p.umap <- D_roasts |> 
+  select(-c(date,name,id,country)) |> 
+  mutate(
+    across(where(is.period), time_length)
+  ) |>  
+  drop_na() |> 
+  bind_cols(roasts.umap$layout) |> 
+  rename(
+    umap_x = `...32`,
+    umap_y = `...33`
+  ) |> 
+  ggplot(aes(x=umap_x, y=umap_y, color=time_length(duration_total))) +
+  geom_point_interactive(alpha=0.7, aes(data_id = file))
+
+p.curves <- D_curves |> 
+  ggplot(aes(x=time, y = bean_probe_ror, group = file))+
+  geom_line_interactive(alpha=0.1, aes(data_id = file)) +
+  scale_x_time(limits = c(ms("0:00"),ms("15:00"))) +
+  scale_y_continuous(limits = c(0,30)) +
+  theme_minimal()
+
+girafe(ggobj = p.umap + p.curves, width_svg = 10, height_svg = 5) %>%
+  girafe_options(opts_hover(css = "stroke:red; stroke-width:2; stroke-opacity:1;"))
 ```
 
 ```{r}
-D_jewels |> 
-  distinct(file, date, yellow_time)|>
-  ggplot(aes(x=date,y=yellow_time)) +
-  geom_point(size=1, alpha=0.6) +
-  #scale_y_continuous(limits=c(195,210))+
-  labs(title="Yellowing Time v.s. Roast Date")
+D_roasts |> 
+  select(-c(file,date,name,id,country)) |> 
+  mutate(
+    across(where(is.period), time_length)
+  ) |>  
+  drop_na() |> 
+  bind_cols(roasts.umap$layout) |> 
+  rename(
+    umap_x = `...31`,
+    umap_y = `...32`
+  ) |>
+  ggpairs(
+    lower = list(
+      continuous = wrap("points", size = 0.7, alpha = 0.3)
+    ),
+    upper = list(
+      continuous = panel_cor_bg
+    ),
+    progress = FALSE
+  ) 
+```
+
+### g. Moisture Loss
+
+```{r}
+D_roasts |> 
+  ggplot(aes(x = loss_pct)) +
+  geom_histogram(bins = 11)
 ```
 
 ```{r}
-D_jewels |>
-  distinct(file, date, finish_temp, finish_time) |>
-  ggplot(aes(x=finish_time,y=finish_temp, group = file, color=date)) +
-  geom_point(size=0.7) +
-  geom_rug() +
-  scale_y_continuous(limits = c(195,210)) +
-  facet_wrap(~factor(year(date))) +
-  labs(title = "Drop Time and Temperature")
+D_roasts |> 
+  summarise(
+    loss.mean = mean(loss_pct),
+    loss.sd = sd(loss_pct)
+  )
 ```
 
 ```{r}
-D_jewels |>
-  distinct(file, date, fc_temp, fc_time) |>
-  ggplot(aes(x=fc_time,y=fc_temp, group = file, color=date)) +
-  geom_point(size=0.7) +
-  geom_rug() +
-  #scale_y_continuous(limits = c(195,210)) +
-  facet_wrap(~factor(year(date))) +
-  labs(title = "First Crack Time and Temperature")
+D_roasts |> 
+  summarise(
+    excess.loss.mean = mean(loss_pct - moisture_pct, na.rm = TRUE),
+    excess.loss.sd = sd(loss_pct - moisture_pct, na.rm = TRUE)
+  )
 ```
 
 ```{r}
-D_jewels |>
-  distinct(file, date, yellow_temp, yellow_time) |>
-  ggplot(aes(x=yellow_time,y=yellow_temp, group = file, color=date)) +
-  geom_point(size=0.7) +
-  geom_rug() +
-  #scale_y_continuous(limits = c(195,210)) +
-  facet_wrap(~factor(year(date))) +
-  labs(title = "Yellowing Time and Temperature")
+D_roasts |> 
+  summarise(
+    moisture.mean = mean(moisture_pct, na.rm = TRUE),
+    moisture.sd = sd(moisture_pct, na.rm = TRUE)
+  )
 ```
-
-TODO - Plots of times of percentages spent in each roast phase. (High value, can inform my roasting)
 
 ```{r}
-D_jewels |>
-  distinct(file, preheat_temp, fc_temp) |>
-  ggplot(aes(x=fc_temp, y=preheat_temp))+
-  geom_point(size=0.7) +
-  geom_smooth(method="lm")+
-  labs(title="Nice negative correlation between preheat temp and finish time")
+D_roasts |> 
+  ggplot(aes(x=moisture_pct, y=loss_pct)) +
+  geom_abline(slope = 1, intercept = 0, alpha = 0.3) +
+  geom_abline(slope = 1, intercept = 1, alpha = 0.3) +
+  geom_abline(slope = 1, intercept = 2, alpha = 0.3) +
+  geom_abline(slope = 1, intercept = 3, alpha = 0.3) +
+  geom_abline(slope = 1, intercept = 4, alpha = 0.3) +
+  geom_vline(xintercept = 10.64) +
+  geom_hline(yintercept = 12.53) +
+  geom_point(alpha=0.7) +
+  geom_rug(alpha = 0.3)+
+  scale_x_continuous(limits = c(8,16)) +
+  scale_y_continuous(limits = c(8,16)) 
 ```
 
-Note to self - At first I thought it was really weird that FC *temp* was decreasing over time, but honestly with both the power settings and preheat temp changing, maybe that should come as less of a surprise. The IBTS measures surface temperatures, and perhaps FC depends on more than the surface temperature of the bean.
+```{r}
+D_roasts |> 
+  ggplot(aes(x=loss_pct-moisture_pct)) +
+  geom_histogram(bins=10)
+```
 
-TODO - Explore this by using BT data.
+TODO - t tests + distributions for all parameters against process method and origin
+
+TODO - Bivariate scatters + correlation coeiffs for roast prameters against density, moisture, and water activity
+
+TODO - Read roast logs and come up with testable hypotheses for understanding control variables (preheat, power, fan, drum)
